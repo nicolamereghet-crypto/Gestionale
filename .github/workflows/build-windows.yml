@@ -1,0 +1,83 @@
+# Crea l'installatore Windows del gestionale.
+#
+# Quando parte:
+#   - a ogni push su main: prova che l'app si avvii su Windows e crea l'installatore
+#     (lo trovi in Actions -> ultima esecuzione -> "Artifacts")
+#   - quando crei un tag v1.0.0, v1.0.1, ...: in più pubblica una Release con l'installatore
+#   - a mano dal pulsante "Run workflow" nella scheda Actions
+name: Installatore Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # serve per pubblicare la Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen   # niente schermo sul server: Qt disegna in memoria
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installa le librerie
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.11.1
+
+      - name: Leggi la versione
+        id: ver
+        shell: bash
+        run: echo "version=$(python -c 'from version import __version__; print(__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Prova l'app da sorgente
+        timeout-minutes: 3
+        run: python main.py --selftest
+
+      - name: Crea Gestionale.exe
+        run: >
+          pyinstaller --noconfirm --clean --windowed --onedir
+          --name Gestionale
+          --icon assets/icon.ico
+          --add-data "assets;assets"
+          --exclude-module matplotlib
+          main.py
+
+      - name: Prova il .exe
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\Gestionale\Gestionale.exe" -ArgumentList "--selftest" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Write-Error "Il .exe non si avvia (codice $($p.ExitCode))"; exit 1 }
+          Write-Host "Il .exe si avvia correttamente"
+
+      - name: Crea l'installatore
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\gestionale.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Salva l'installatore
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gestionale-Setup-${{ steps.ver.outputs.version }}
+          path: dist/Gestionale-Setup-*.exe
+
+      - name: Pubblica la Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Gestionale-Setup-*.exe
+          generate_release_notes: true

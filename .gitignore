@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build
+build/
+dist/
+*.spec
+
+# Dati: MAI nel repository (contengono fatture del cliente)
+data/
+backup/
+*.db
+*.log
+
+# Copie di sicurezza locali e file di sistema
+_versione_precedente_*/
+codice_unificato.txt
+.DS_Store
