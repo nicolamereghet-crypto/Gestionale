@@ -19,3 +19,4 @@ backup/
 _versione_precedente_*/
 codice_unificato.txt
 .DS_Store
+Claude outputs/
